@@ -46,6 +46,10 @@ func New(cfg Config, notifier *notify.Notifier) *Video {
 func (v *Video) Start(ctx context.Context) {
 	// Run every Sunday at 4am (after backup at 3am)
 	for {
+		// give this head start on startup to avoid competing with backup's CPU/disk usage
+		v.run(ctx)
+
+		// schedule next run
 		next := nextOccurrence(time.Sunday, 4, 0)
 		log.Printf("[video] next compression run scheduled at %s", next.Format(time.RFC1123))
 
