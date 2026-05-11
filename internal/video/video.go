@@ -187,9 +187,11 @@ func (v *Video) compressInPlace(path string) (savedBytes int64, err error) {
 	// -movflags +faststart : put metadata at front for fast streaming
 	// -y                   : overwrite tmpPath if a previous run left one
 	cmd := exec.Command(
+		"nice", "-n", "19",
 		"ffmpeg",
 		"-nostdin",
 		"-loglevel", "error",
+		"-threads", "4",
 		"-i", path,
 		"-c:v", "libx265",
 		"-crf", v.cfg.CRF,
