@@ -46,10 +46,6 @@ func New(cfg Config, notifier *notify.Notifier) *Video {
 func (v *Video) Start(ctx context.Context) {
 	// Run every Sunday at 4am (after backup at 3am)
 	for {
-		// give this head start on startup to avoid competing with backup's CPU/disk usage
-		v.run(ctx)
-
-		// schedule next run
 		next := nextOccurrence(time.Sunday, 4, 0)
 		log.Printf("[video] next compression run scheduled at %s", next.Format(time.RFC1123))
 
@@ -160,12 +156,11 @@ func (v *Video) run(ctx context.Context) {
 	}
 }
 
-// compressInPlace is the key function:
-// 1. Read original from SSD
-// 2. Pipe through ffmpeg in RAM (no temp file on disk)
-// 3. Write compressed result once to a temp file, then atomic rename
-//
-// This minimizes SSD writes: 1 read + 1 write per file (vs 2 reads + 2 writes with temp file approach)
+// compressInPlace compresses a video file in place using ffmpeg.
+// MP4 muxer requires seekable output so we cannot pipe to stdout.
+// Instead ffmpeg writes directly to a .guardian_tmp file, then we
+// atomically rename over the original.
+// Write count: 1 write (tmp) + 1 rename — original untouched on failure.
 func (v *Video) compressInPlace(path string) (savedBytes int64, err error) {
 	originalInfo, err := os.Stat(path)
 	if err != nil {
@@ -176,19 +171,16 @@ func (v *Video) compressInPlace(path string) (savedBytes int64, err error) {
 	// Temp file in same directory for atomic rename
 	tmpPath := path + ".guardian_tmp"
 
-	// ffmpeg reads from original path, writes compressed to stdout
-	// We capture stdout and write to tmpPath
-	//
 	// Key flags:
-	// -nostdin        : don't try to read stdin (we're piping)
-	// -loglevel error : suppress ffmpeg noise
-	// -c:v libx265   : H.265 compression (better than H.264 at same quality)
-	// -crf            : quality factor (28 = good quality, smaller file)
-	// -preset         : speed/compression tradeoff
-	// -c:a copy       : copy audio as-is, no re-encode (saves CPU, no quality loss)
-	// -tag:v hvc1     : Apple compatibility tag for HEVC
-	// -movflags +faststart : put metadata at start for streaming
-	// pipe:1          : write to stdout
+	// -nostdin             : don't read stdin
+	// -loglevel error      : suppress ffmpeg noise
+	// -c:v libx265         : H.265 — better quality per MB than H.264
+	// -crf                 : quality factor (28 = good quality, smaller file)
+	// -preset              : speed/compression tradeoff
+	// -c:a copy            : copy audio stream as-is, no quality loss
+	// -tag:v hvc1          : Apple compatibility tag for HEVC
+	// -movflags +faststart : put metadata at front for fast streaming
+	// -y                   : overwrite tmpPath if a previous run left one
 	cmd := exec.Command(
 		"ffmpeg",
 		"-nostdin",
@@ -200,27 +192,17 @@ func (v *Video) compressInPlace(path string) (savedBytes int64, err error) {
 		"-c:a", "copy",
 		"-tag:v", "hvc1",
 		"-movflags", "+faststart",
-		"-f", "mp4",
-		"pipe:1",
+		"-y",
+		tmpPath,
 	)
-
-	// Open temp output file
-	tmpFile, err := os.Create(tmpPath)
-	if err != nil {
-		return 0, fmt.Errorf("create temp file: %w", err)
-	}
-
-	cmd.Stdout = tmpFile
 
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		tmpFile.Close()
 		os.Remove(tmpPath)
 		return 0, fmt.Errorf("ffmpeg: %w\nstderr: %s", err, stderr.String())
 	}
-	tmpFile.Close()
 
 	compressedInfo, err := os.Stat(tmpPath)
 	if err != nil {
