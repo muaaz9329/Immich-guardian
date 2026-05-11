@@ -1,0 +1,17 @@
+# binary
+guardian
+
+# env (never commit secrets)
+.env
+
+# logs
+*.log
+
+# PID file
+.guardian.pid
+
+# processed videos tracking
+.guardian_processed.json
+
+# macOS
+.DS_Store
