@@ -133,6 +133,7 @@ func (v *Video) run(ctx context.Context) {
 		if saved < originalSize/10 {
 			log.Printf("[video] skipping replace — compression saved less than 10%% for %s", path)
 			db.Processed[path] = hash
+			v.saveDB(db) // ← add this
 			skipped++
 			continue
 		}
@@ -141,13 +142,16 @@ func (v *Video) run(ctx context.Context) {
 		compressed++
 
 		// Update processed db
-		newHash, _ := fileHash(path)
+		newHash, err := fileHash(path)
+		if err != nil {
+			log.Printf("[video] hash failed after compression for %s: %v", path, err)
+			newHash = hash // fall back to original hash
+		}
 		db.Processed[path] = newHash
+		v.saveDB(db)
 
 		log.Printf("[video] compressed %s, saved %.1f MB", filepath.Base(path), float64(saved)/1024/1024)
 	}
-
-	v.saveDB(db)
 
 	savedMB := float64(savedBytes) / 1024 / 1024
 	msg := fmt.Sprintf(
@@ -187,7 +191,7 @@ func (v *Video) compressInPlace(path string) (savedBytes int64, err error) {
 	// -movflags +faststart : put metadata at front for fast streaming
 	// -y                   : overwrite tmpPath if a previous run left one
 	cmd := exec.Command(
-		"nice", "-n", "19",
+		"taskpolicy", "-c", "background",
 		"ffmpeg",
 		"-nostdin",
 		"-loglevel", "error",
@@ -195,7 +199,7 @@ func (v *Video) compressInPlace(path string) (savedBytes int64, err error) {
 		"-c:v", "libx265",
 		"-crf", v.cfg.CRF,
 		"-preset", v.cfg.Preset,
-		"-x265-params", "pools=4", // ← x265 specific thread pool limit
+		"-x265-params", "pools=4:frame-threads=4",
 		"-c:a", "copy",
 		"-tag:v", "hvc1",
 		"-movflags", "+faststart",
