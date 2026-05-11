@@ -34,13 +34,13 @@ The alternative was to self-host [Immich](https://immich.app/) — an open sourc
 
 ### 🎬 Video Compression (every Sunday 4am)
 - Finds uncompressed `.mov`/`.mp4`/`.m4v` files in your Immich library
-- Compresses via ffmpeg **entirely in RAM** — reads original, pipes through ffmpeg, writes compressed once
-- Only 1 read + 1 write per file on SSD (no temp files on disk)
-- Skips files modified in last 10 minutes (might still be uploading)
+- Compresses using H.265 (libx265) via ffmpeg — same codec iPhone uses, better compression
+- ffmpeg writes to a `.guardian_tmp` file, then atomically renames over the original
+- If compression fails at any point, the original file is completely untouched
+- Skips files modified in the last 10 minutes (might still be uploading)
 - Skips if compression saves less than 10% (already well-compressed)
-- Atomic rename — no window where the file is missing or corrupt
 - Tracks processed files in `.guardian_processed.json` to avoid re-processing
-- Sends weekly summary with space saved
+- Sends a summary notification with space saved
 
 ### 📊 Reports
 - **Weekly**: photo/video counts, SSD usage, container status
@@ -56,7 +56,7 @@ The alternative was to self-host [Immich](https://immich.app/) — an open sourc
 brew install ffmpeg   # for video compression
 ```
 
-### 1. Clone and build
+### 1. Clone
 
 ```bash
 git clone <repo>
@@ -80,7 +80,7 @@ Get Pushover credentials at [pushover.net](https://pushover.net):
 ./start.sh
 ```
 
-This will validate your environment, build the binary, and launch guardian as a background process. Logs are saved to `guardian.log` in the same directory.
+Validates your environment, builds the binary fresh, and launches guardian as a background process. Logs are saved to `guardian.log` in the same directory.
 
 ### 4. Stop
 
@@ -88,7 +88,7 @@ This will validate your environment, build the binary, and launch guardian as a 
 ./stop.sh
 ```
 
-Sends a graceful shutdown signal and waits for the process to exit cleanly before force-killing.
+Sends a graceful `SIGTERM` and waits up to 10 seconds for a clean exit before force-killing.
 
 ### 5. Restart
 
@@ -106,16 +106,15 @@ tail -f guardian.log
 
 ## SSD Write Strategy
 
-The video compressor is designed to minimize SSD writes:
+The video compressor is built around minimizing SSD writes. MP4 requires seekable output — ffmpeg cannot stream compressed video to stdout because it needs to seek back and rewrite the file header after encoding completes. Piping to stdout simply doesn't work with the MP4 container format.
+
+The actual flow:
 
 ```
-SSD (original) → RAM → ffmpeg → single write back to SSD
+read original from SSD → ffmpeg encodes → write .guardian_tmp → atomic rename over original
 ```
 
-- No temp files written to SSD during compression
-- ffmpeg reads from SSD, outputs compressed video to stdout (RAM), we capture and write once
-- Atomic `os.Rename()` replaces the original — no window where file is missing
-- If compression fails mid-way, the original is completely untouched
+Write count per file: **1 write + 1 rename**. The rename is a single syscall — there is no window where the file is missing or partially written. If ffmpeg fails at any point, the `.guardian_tmp` is deleted and the original is never touched.
 
 ---
 
