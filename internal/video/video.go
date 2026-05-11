@@ -66,6 +66,13 @@ func (v *Video) Start(ctx context.Context) {
 func (v *Video) run(ctx context.Context) {
 	log.Println("[video] starting compression run...")
 
+	filepath.Walk(v.cfg.LibraryPath, func(path string, info os.FileInfo, err error) error {
+		if err == nil && strings.Contains(info.Name(), ".guardian_tmp") {
+			log.Printf("[video] removing stale tmp file: %s", path)
+			os.Remove(path)
+		}
+		return nil
+	})
 	db, err := v.loadDB()
 	if err != nil {
 		log.Printf("[video] failed to load processed db: %v", err)
@@ -122,7 +129,7 @@ func (v *Video) run(ctx context.Context) {
 		}
 
 		originalSize := info.Size()
-		saved, err := v.compressInPlace(path)
+		saved, err := v.compressInPlace(ctx, path)
 		if err != nil {
 			log.Printf("[video] compression failed for %s: %v", path, err)
 			failed++
@@ -170,7 +177,7 @@ func (v *Video) run(ctx context.Context) {
 // Instead ffmpeg writes directly to a .guardian_tmp file, then we
 // atomically rename over the original.
 // Write count: 1 write (tmp) + 1 rename — original untouched on failure.
-func (v *Video) compressInPlace(path string) (savedBytes int64, err error) {
+func (v *Video) compressInPlace(ctx context.Context, path string) (savedBytes int64, err error) {
 	originalInfo, err := os.Stat(path)
 	if err != nil {
 		return 0, fmt.Errorf("stat original: %w", err)
@@ -211,7 +218,18 @@ func (v *Video) compressInPlace(path string) (savedBytes int64, err error) {
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
+		os.Remove(tmpPath)
+		return 0, fmt.Errorf("ffmpeg start: %w", err)
+	}
+
+	// kill ffmpeg if guardian is shutting down
+	go func() {
+		<-ctx.Done()
+		cmd.Process.Kill()
+	}()
+
+	if err := cmd.Wait(); err != nil {
 		os.Remove(tmpPath)
 		return 0, fmt.Errorf("ffmpeg: %w\nstderr: %s", err, stderr.String())
 	}
