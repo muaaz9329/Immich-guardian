@@ -191,11 +191,11 @@ func (v *Video) compressInPlace(path string) (savedBytes int64, err error) {
 		"ffmpeg",
 		"-nostdin",
 		"-loglevel", "error",
-		"-threads", "4",
 		"-i", path,
 		"-c:v", "libx265",
 		"-crf", v.cfg.CRF,
 		"-preset", v.cfg.Preset,
+		"-x265-params", "pools=4", // ← x265 specific thread pool limit
 		"-c:a", "copy",
 		"-tag:v", "hvc1",
 		"-movflags", "+faststart",
@@ -244,6 +244,12 @@ func (v *Video) findVideos() ([]string, error) {
 			return nil // skip unreadable files
 		}
 		if info.IsDir() {
+			return nil
+		}
+		if strings.HasPrefix(info.Name(), "._") {
+			return nil
+		}
+		if strings.Contains(info.Name(), ".guardian_tmp") {
 			return nil
 		}
 		ext := strings.ToLower(filepath.Ext(path))
