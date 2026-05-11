@@ -11,11 +11,11 @@ import (
 	"github.com/muaaz9329/Immich-guardian/internal/config"
 	"github.com/muaaz9329/Immich-guardian/internal/monitor"
 	"github.com/muaaz9329/Immich-guardian/internal/notify"
-	"github.com/muaaz9329/Immich-guardian/internal/video"
+	// "github.com/muaaz9329/Immich-guardian/internal/video"
 )
 
 func main() {
-	monCfg, bakCfg, vidCfg, pushoverAppKey, pushoverUserKey := config.LoadConfig()
+	monCfg, bakCfg, _, pushoverAppKey, pushoverUserKey := config.LoadConfig()
 
 	notifier := notify.New(pushoverAppKey, pushoverUserKey)
 
@@ -24,12 +24,12 @@ func main() {
 
 	mon := monitor.New(monCfg, notifier)
 	bak := backup.New(bakCfg, notifier)
-	vid := video.New(vidCfg, notifier)
+	// vid := video.New(vidCfg, notifier)
 
 	go mon.Start(ctx)
 	go mon.StartReporter(ctx)
 	go bak.Start(ctx)
-	go vid.Start(ctx)
+	// go vid.Start(ctx)
 
 	log.Println("immich-guardian started")
 	notifier.SendEmergency("immich-guardian started", "All services running: monitor, backup, video compressor.")
