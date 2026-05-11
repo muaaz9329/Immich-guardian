@@ -32,13 +32,13 @@ func main() {
 	go vid.Start(ctx)
 
 	log.Println("immich-guardian started")
-	notifier.SendInfo("immich-guardian started", "All services running: monitor, backup, video compressor.")
+	notifier.SendEmergency("immich-guardian started", "All services running: monitor, backup, video compressor.")
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 
-	notifier.SendInfo("immich-guardian shutting down", "Received shutdown signal, stopping all services...")
+	notifier.SendEmergency("immich-guardian shutting down", "Received shutdown signal, stopping all services...")
 
 	log.Println("shutting down...")
 	cancel()
