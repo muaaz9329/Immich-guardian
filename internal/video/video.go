@@ -174,7 +174,7 @@ func (v *Video) compressInPlace(path string) (savedBytes int64, err error) {
 	originalSize := originalInfo.Size()
 
 	// Temp file in same directory for atomic rename
-	tmpPath := path + ".guardian_tmp"
+	tmpPath := path + ".guardian_tmp.mp4"
 
 	// Key flags:
 	// -nostdin             : don't read stdin
@@ -197,6 +197,7 @@ func (v *Video) compressInPlace(path string) (savedBytes int64, err error) {
 		"-c:a", "copy",
 		"-tag:v", "hvc1",
 		"-movflags", "+faststart",
+		"-f", "mp4",
 		"-y",
 		tmpPath,
 	)
