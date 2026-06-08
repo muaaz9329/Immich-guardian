@@ -18,6 +18,7 @@ type Config struct {
 	BackupPath        string
 	PostgresContainer string
 	DBUser            string
+	DBUserPass        string
 	KeepWeeks         int // how many weekly backups to retain
 }
 
@@ -32,6 +33,8 @@ func New(cfg Config, notifier *notify.Notifier) *Backup {
 
 func (b *Backup) Start(ctx context.Context) {
 	// Run weekly on Sunday at 3am
+	// run the first loop immediately to schedule the first backup, then wait for the next occurrence
+	b.run()
 	for {
 		next := nextOccurrence(time.Sunday, 3, 0)
 		log.Printf("[backup] next backup scheduled at %s", next.Format(time.RFC1123))
@@ -66,7 +69,8 @@ func (b *Backup) run() {
 	defer outFile.Close()
 
 	cmd := exec.Command(
-		"docker", "exec", b.cfg.PostgresContainer,
+		"docker", "exec", "-e", "PGPASSWORD="+b.cfg.DBUserPass,
+		b.cfg.PostgresContainer,
 		"pg_dumpall", "-c", "-U", b.cfg.DBUser,
 	)
 	cmd.Stdout = outFile

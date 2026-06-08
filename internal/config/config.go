@@ -16,6 +16,7 @@ func LoadConfig() (monitor.Config, backup.Config, video.Config, string, string) 
 	postgresContainer := getEnv("POSTGRES_CONTAINER", "immich_postgres")
 	immichContainer := getEnv("IMMICH_CONTAINER", "immich_server")
 	dbUser := getEnv("DB_USER", "postgres")
+	dbUserPass := getEnv("DB_PASS", "postgres")
 
 	monCfg := monitor.Config{
 		SSDMount:          ssdMount,
@@ -28,6 +29,7 @@ func LoadConfig() (monitor.Config, backup.Config, video.Config, string, string) 
 		BackupPath:        backupPath,
 		PostgresContainer: postgresContainer,
 		DBUser:            dbUser,
+		DBUserPass:        dbUserPass,
 		KeepWeeks:         4,
 	}
 
